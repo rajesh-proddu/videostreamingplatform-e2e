@@ -1,60 +1,51 @@
 package happypath
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
 	"testing"
-	"time"
 
 	"github.com/yourusername/videostreamingplatform-e2e/client"
 	"github.com/yourusername/videostreamingplatform-e2e/testutil"
 )
 
-// WatchEvent represents the payload sent to record a watch event.
-type WatchEvent struct {
-	VideoID   string `json:"video_id"`
-	UserID    string `json:"user_id"`
-	Action    string `json:"action"`
-	Timestamp string `json:"timestamp"`
-	Duration  int    `json:"duration,omitempty"`
-}
-
-func TestWatchEvent_StartedAndCompleted(t *testing.T) {
+// TestWatchEvent_DownloadProducesStartedAndCompleted exercises the only path
+// that produces watch events in the platform: GET /videos/{id}/download on
+// dataservice for a full (non-Range) request.
+func TestWatchEvent_DownloadProducesStartedAndCompleted(t *testing.T) {
 	env := testutil.NewEnv(t)
-	video := env.CreateTestVideo(t, testutil.UniqueTitle("watch"), 512)
 
 	consumer := client.NewKafkaConsumer(
 		env.Cfg.KafkaBrokers,
 		"watch-events",
-		"e2e-test-watch-"+testutil.UniqueTitle("grp"),
+		"e2e-watch-"+testutil.UniqueID("grp"),
 	)
 	defer consumer.Close()
 
-	// Send watch.started
-	watchStarted := WatchEvent{
-		VideoID:   video.ID,
-		UserID:    "e2e-watcher",
-		Action:    "started",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-	}
-	sendWatchEvent(t, env, &watchStarted)
+	const sizeBytes = 4 * 1024
+	v := env.CreateTestVideo(t, testutil.UniqueTitle("watch"), sizeBytes)
 
-	// Send watch.completed
-	watchCompleted := WatchEvent{
-		VideoID:   video.ID,
+	init, _, err := env.Data.InitiateUpload(&client.UploadInitiateRequest{
+		VideoID:   v.ID,
 		UserID:    "e2e-watcher",
-		Action:    "completed",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Duration:  120,
+		TotalSize: sizeBytes,
+	})
+	if err != nil {
+		t.Fatalf("InitiateUpload: %v", err)
 	}
-	sendWatchEvent(t, env, &watchCompleted)
+	if _, err := env.Data.UploadChunk(init.UploadID, 0, testutil.RandomBytes(sizeBytes)); err != nil {
+		t.Fatalf("UploadChunk: %v", err)
+	}
+	if _, _, err := env.Data.CompleteUpload(init.UploadID); err != nil {
+		t.Fatalf("CompleteUpload: %v", err)
+	}
 
-	// Read events from Kafka
+	if _, _, err := env.Data.DownloadVideo(v.ID, "e2e-watcher"); err != nil {
+		t.Fatalf("DownloadVideo: %v", err)
+	}
+
 	events, err := consumer.ReadEvents(context.Background(), env.Cfg.EventWaitTime)
 	if err != nil {
-		t.Fatalf("ReadEvents failed: %v", err)
+		t.Fatalf("ReadEvents: %v", err)
 	}
 
 	startedFound, completedFound := false, false
@@ -68,26 +59,12 @@ func TestWatchEvent_StartedAndCompleted(t *testing.T) {
 	}
 
 	if !startedFound && !completedFound {
-		t.Skip("watch events not received within timeout")
+		t.Skipf("watch events not received within %s — Kafka producer may be disabled in dataservice", env.Cfg.EventWaitTime)
 	}
 	if startedFound {
-		t.Log("received watch.started event")
+		t.Log("received watch.started")
 	}
 	if completedFound {
-		t.Log("received watch.completed event")
-	}
-}
-
-func sendWatchEvent(t *testing.T, env *testutil.Env, evt *WatchEvent) {
-	t.Helper()
-	body, _ := json.Marshal(evt)
-	resp, err := env.Metadata.RawPost("/watch-events", "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Logf("sendWatchEvent failed (endpoint may not exist): %v", err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-		t.Logf("sendWatchEvent status = %d (endpoint may use different path)", resp.StatusCode)
+		t.Log("received watch.completed")
 	}
 }

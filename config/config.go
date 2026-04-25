@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// Config holds all service URLs and test parameters.
 type Config struct {
 	MetadataServiceURL string
 	DataServiceURL     string
@@ -15,12 +14,23 @@ type Config struct {
 	KafkaBrokers       string
 	RedisAddr          string
 
-	// Timeouts
-	HTTPTimeout    time.Duration
-	UploadTimeout  time.Duration
-	EventWaitTime  time.Duration
+	ElasticsearchURL         string
+	ESVideoIndex             string
+	RecommendationServiceURL string
+	PgVectorDSN              string
 
-	// Scale test parameters
+	S3Endpoint             string
+	S3Region               string
+	S3AccessKey            string
+	S3SecretKey            string
+	IcebergWarehouseBucket string
+	IcebergTablePrefix     string
+
+	HTTPTimeout       time.Duration
+	UploadTimeout     time.Duration
+	EventWaitTime     time.Duration
+	AnalyticsWaitTime time.Duration
+
 	BulkCount       int
 	ConcurrentUsers int
 }
@@ -32,11 +42,26 @@ func Load() *Config {
 		DataServiceGRPC:    envOr("DATA_SERVICE_GRPC", "localhost:50051"),
 		KafkaBrokers:       envOr("KAFKA_BROKERS", "localhost:9092"),
 		RedisAddr:          envOr("REDIS_ADDR", "localhost:6379"),
-		HTTPTimeout:        durationOr("HTTP_TIMEOUT", 30*time.Second),
-		UploadTimeout:      durationOr("UPLOAD_TIMEOUT", 120*time.Second),
-		EventWaitTime:      durationOr("EVENT_WAIT_TIME", 5*time.Second),
-		BulkCount:          intOr("BULK_COUNT", 50),
-		ConcurrentUsers:    intOr("CONCURRENT_USERS", 10),
+
+		ElasticsearchURL:         envOr("ELASTICSEARCH_URL", "http://localhost:9200"),
+		ESVideoIndex:             envOr("ES_VIDEO_INDEX", "videos"),
+		RecommendationServiceURL: envOr("RECOMMENDATION_SERVICE_URL", "http://localhost:8000"),
+		PgVectorDSN:              envOr("PGVECTOR_DSN", "postgres://recouser:recopass@localhost:5432/recommendations?sslmode=disable"),
+
+		S3Endpoint:             envOr("S3_ENDPOINT", "http://localhost:4566"),
+		S3Region:               envOr("AWS_REGION", "us-east-1"),
+		S3AccessKey:            envOr("AWS_ACCESS_KEY_ID", "test"),
+		S3SecretKey:            envOr("AWS_SECRET_ACCESS_KEY", "test"),
+		IcebergWarehouseBucket: envOr("ICEBERG_WAREHOUSE_BUCKET", "iceberg-warehouse"),
+		IcebergTablePrefix:     envOr("ICEBERG_TABLE_PREFIX", "analytics.db/watch_history/data"),
+
+		HTTPTimeout:       durationOr("HTTP_TIMEOUT", 30*time.Second),
+		UploadTimeout:     durationOr("UPLOAD_TIMEOUT", 120*time.Second),
+		EventWaitTime:     durationOr("EVENT_WAIT_TIME", 5*time.Second),
+		AnalyticsWaitTime: durationOr("ANALYTICS_WAIT_TIME", 30*time.Second),
+
+		BulkCount:       intOr("BULK_COUNT", 50),
+		ConcurrentUsers: intOr("CONCURRENT_USERS", 10),
 	}
 }
 
