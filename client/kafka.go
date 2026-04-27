@@ -36,6 +36,23 @@ func NewKafkaConsumer(brokers, topic, groupID string) *KafkaConsumer {
 	}
 }
 
+// NewKafkaConsumerFromStart reads from the earliest offset on a fresh group —
+// useful for tests that need to assert on events produced before the consumer
+// finished joining.
+func NewKafkaConsumerFromStart(brokers, topic, groupID string) *KafkaConsumer {
+	return &KafkaConsumer{
+		reader: kafkago.NewReader(kafkago.ReaderConfig{
+			Brokers:        strings.Split(brokers, ","),
+			Topic:          topic,
+			GroupID:        groupID,
+			MinBytes:       1,
+			MaxBytes:       10e6,
+			StartOffset:    kafkago.FirstOffset,
+			CommitInterval: time.Second,
+		}),
+	}
+}
+
 // ReadEvents reads events from the topic until timeout, returning all collected events.
 func (c *KafkaConsumer) ReadEvents(ctx context.Context, timeout time.Duration) ([]KafkaEvent, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)

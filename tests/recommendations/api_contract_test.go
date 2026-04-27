@@ -2,6 +2,7 @@ package recommendations
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -121,7 +122,7 @@ func TestReco_Proxy_HappyPath_ReturnsResponse(t *testing.T) {
 	}
 }
 
-func TestReco_Proxy_LimitParamIsIgnored(t *testing.T) {
+func TestReco_Proxy_RespectsLimitQueryParam(t *testing.T) {
 	env := testutil.NewEnv(t)
 	httpClient := &http.Client{Timeout: env.Cfg.HTTPTimeout}
 
@@ -137,7 +138,13 @@ func TestReco_Proxy_LimitParamIsIgnored(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	t.Log("note: metadataservice/handlers/recommendation.go currently hardcodes limit=10 — query 'limit' is silently dropped")
+	var body client.RecommendationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Recommendations) > 3 {
+		t.Fatalf("got %d recommendations, want ≤ 3 (query limit)", len(body.Recommendations))
+	}
 }
 
 func TestReco_Health(t *testing.T) {
