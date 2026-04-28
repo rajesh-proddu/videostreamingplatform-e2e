@@ -18,6 +18,7 @@ type Env struct {
 	Data      *client.DataClient
 	ES        *client.ESClient
 	Recommend *client.RecommendClient
+	CDN       *client.CDNClient
 }
 
 func NewEnv(t *testing.T) *Env {
@@ -29,6 +30,7 @@ func NewEnv(t *testing.T) *Env {
 		Data:      client.NewDataClient(cfg.DataServiceURL, cfg.UploadTimeout),
 		ES:        client.NewESClient(cfg.ElasticsearchURL, cfg.ESVideoIndex, cfg.HTTPTimeout),
 		Recommend: client.NewRecommendClient(cfg.RecommendationServiceURL, cfg.HTTPTimeout),
+		CDN:       client.NewCDNClient(cfg.CDNProxyURL, cfg.HTTPTimeout),
 	}
 }
 
@@ -112,6 +114,14 @@ func (e *Env) RequireRecommendations(t *testing.T) {
 	code, err := e.Recommend.Health()
 	if err != nil || code >= 500 {
 		t.Skipf("Recommendation service unreachable at %s: code=%d err=%v", e.Cfg.RecommendationServiceURL, code, err)
+	}
+}
+
+func (e *Env) RequireCDN(t *testing.T) {
+	t.Helper()
+	code, err := e.CDN.Health()
+	if err != nil || code >= 500 {
+		t.Skipf("CDN proxy unreachable at %s: code=%d err=%v", e.Cfg.CDNProxyURL, code, err)
 	}
 }
 

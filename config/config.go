@@ -26,6 +26,9 @@ type Config struct {
 	IcebergWarehouseBucket string
 	IcebergTablePrefix     string
 
+	CDNProxyURL              string
+	CloudFrontDistributionID string
+
 	HTTPTimeout       time.Duration
 	UploadTimeout     time.Duration
 	EventWaitTime     time.Duration
@@ -37,23 +40,26 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		MetadataServiceURL: envOr("METADATA_SERVICE_URL", "http://localhost:8080"),
-		DataServiceURL:     envOr("DATA_SERVICE_URL", "http://localhost:8081"),
-		DataServiceGRPC:    envOr("DATA_SERVICE_GRPC", "localhost:50051"),
-		KafkaBrokers:       envOr("KAFKA_BROKERS", "localhost:9092"),
-		RedisAddr:          envOr("REDIS_ADDR", "localhost:6379"),
+		MetadataServiceURL: envOr("METADATA_SERVICE_URL", "http://127.0.0.1:8080"),
+		DataServiceURL:     envOr("DATA_SERVICE_URL", "http://127.0.0.1:8081"),
+		DataServiceGRPC:    envOr("DATA_SERVICE_GRPC", "127.0.0.1:50051"),
+		KafkaBrokers:       envOr("KAFKA_BROKERS", "127.0.0.1:9092"),
+		RedisAddr:          envOr("REDIS_ADDR", "127.0.0.1:6379"),
 
-		ElasticsearchURL:         envOr("ELASTICSEARCH_URL", "http://localhost:9200"),
+		ElasticsearchURL:         envOr("ELASTICSEARCH_URL", "http://127.0.0.1:9200"),
 		ESVideoIndex:             envOr("ES_VIDEO_INDEX", "videos"),
-		RecommendationServiceURL: envOr("RECOMMENDATION_SERVICE_URL", "http://localhost:8000"),
-		PgVectorDSN:              envOr("PGVECTOR_DSN", "postgres://recouser:recopass@localhost:5432/recommendations?sslmode=disable"),
+		RecommendationServiceURL: envOr("RECOMMENDATION_SERVICE_URL", "http://127.0.0.1:8000"),
+		PgVectorDSN:              envOr("PGVECTOR_DSN", "postgres://recouser:recopass@127.0.0.1:5432/recommendations?sslmode=disable"),
 
-		S3Endpoint:             envOr("S3_ENDPOINT", "http://localhost:4566"),
+		S3Endpoint:             envOr("S3_ENDPOINT", "http://127.0.0.1:9000"),
 		S3Region:               envOr("AWS_REGION", "us-east-1"),
-		S3AccessKey:            envOr("AWS_ACCESS_KEY_ID", "test"),
-		S3SecretKey:            envOr("AWS_SECRET_ACCESS_KEY", "test"),
+		S3AccessKey:            envOr("AWS_ACCESS_KEY_ID", "minioadmin"),
+		S3SecretKey:            envOr("AWS_SECRET_ACCESS_KEY", "minioadmin"),
 		IcebergWarehouseBucket: envOr("ICEBERG_WAREHOUSE_BUCKET", "iceberg-warehouse"),
 		IcebergTablePrefix:     envOr("ICEBERG_TABLE_PREFIX", "analytics.db/watch_history/data"),
+
+		CDNProxyURL:              envOr("CDN_PROXY_URL", "http://127.0.0.1:8090"),
+		CloudFrontDistributionID: envOr("CLOUDFRONT_DISTRIBUTION_ID", ""),
 
 		HTTPTimeout:       durationOr("HTTP_TIMEOUT", 30*time.Second),
 		UploadTimeout:     durationOr("UPLOAD_TIMEOUT", 120*time.Second),
