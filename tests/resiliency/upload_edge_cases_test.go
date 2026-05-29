@@ -86,7 +86,10 @@ func TestUpload_ProgressForNonExistentUpload(t *testing.T) {
 
 func TestUpload_ZeroSizeFile(t *testing.T) {
 	env := testutil.NewEnv(t)
-	video := env.CreateTestVideo(t, testutil.UniqueTitle("zero-size"), 0)
+	// Video record size must be > 0 (metadataservice validation); the test
+	// exercises a zero-sized *upload session*, which is what the endpoint
+	// is being probed for.
+	video := env.CreateTestVideo(t, testutil.UniqueTitle("zero-size"), 1)
 
 	_, _, err := env.Data.InitiateUpload(&client.UploadInitiateRequest{
 		VideoID:   video.ID,

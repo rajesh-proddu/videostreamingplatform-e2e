@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/yourusername/videostreamingplatform-e2e/client"
 	"github.com/yourusername/videostreamingplatform-e2e/testutil"
@@ -44,8 +45,12 @@ func TestES_VideoUpdate_ReplacesDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-update lookup: %v", err)
 	}
+	// WaitForDoc returned immediately — the doc exists with the OLD title.
+	// Poll until the kafka-es-consumer processes the update and the new
+	// title shows up.
 	got, _ := doc.Source["title"].(string)
-	for tries := 0; tries < 10 && got != newTitle; tries++ {
+	for tries := 0; tries < 20 && got != newTitle; tries++ {
+		time.Sleep(500 * time.Millisecond)
 		doc, _ = env.ES.WaitForDoc(v.ID, true, deadline)
 		got, _ = doc.Source["title"].(string)
 	}

@@ -18,6 +18,7 @@ type Config struct {
 	ESVideoIndex             string
 	RecommendationServiceURL string
 	PgVectorDSN              string
+	OllamaBaseURL            string
 
 	S3Endpoint             string
 	S3Region               string
@@ -36,6 +37,14 @@ type Config struct {
 
 	BulkCount       int
 	ConcurrentUsers int
+
+	// MySQL DSN for direct DB scale probes (default points at local docker mysql).
+	MySQLDSN string
+
+	// Scale-test tunables (read by tests under tests/scale/metadata_db).
+	ScaleDuration time.Duration
+	ScaleWorkers  int
+	ScaleCorpus   int
 }
 
 func Load() *Config {
@@ -50,8 +59,9 @@ func Load() *Config {
 		ESVideoIndex:             envOr("ES_VIDEO_INDEX", "videos"),
 		RecommendationServiceURL: envOr("RECOMMENDATION_SERVICE_URL", "http://127.0.0.1:8000"),
 		PgVectorDSN:              envOr("PGVECTOR_DSN", "postgres://recouser:recopass@127.0.0.1:5432/recommendations?sslmode=disable"),
+		OllamaBaseURL:            envOr("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
 
-		S3Endpoint:             envOr("S3_ENDPOINT", "http://127.0.0.1:9000"),
+		S3Endpoint:             envOr("S3_ENDPOINT", "http://127.0.0.1:4566"),
 		S3Region:               envOr("AWS_REGION", "us-east-1"),
 		S3AccessKey:            envOr("AWS_ACCESS_KEY_ID", "minioadmin"),
 		S3SecretKey:            envOr("AWS_SECRET_ACCESS_KEY", "minioadmin"),
@@ -68,6 +78,12 @@ func Load() *Config {
 
 		BulkCount:       intOr("BULK_COUNT", 50),
 		ConcurrentUsers: intOr("CONCURRENT_USERS", 10),
+
+		MySQLDSN: envOr("MYSQL_DSN", "videouser:videopass@tcp(127.0.0.1:3306)/videoplatform?parseTime=true"),
+
+		ScaleDuration: durationOr("SCALE_DURATION", 60*time.Second),
+		ScaleWorkers:  intOr("SCALE_WORKERS", 16),
+		ScaleCorpus:   intOr("SCALE_CORPUS", 1_000_000),
 	}
 }
 

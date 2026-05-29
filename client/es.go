@@ -67,6 +67,10 @@ func (c *ESClient) WaitForDoc(id string, mustExist bool, timeout time.Duration) 
 	for {
 		doc, _, err := c.GetDoc(id)
 		if err == nil && doc.Found == mustExist {
+			// GetDoc is realtime; the segment refresh that makes the doc visible
+			// to _search has not run yet. Force one so callers can do search
+			// queries immediately after this returns.
+			_ = c.RefreshIndex()
 			return doc, nil
 		}
 		if time.Now().After(deadline) {
