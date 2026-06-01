@@ -13,6 +13,7 @@ import (
 // dataservice for a full (non-Range) request.
 func TestWatchEvent_DownloadProducesStartedAndCompleted(t *testing.T) {
 	env := testutil.NewEnv(t)
+	env.EnsureEntitled(t)
 
 	consumer := client.NewKafkaConsumer(
 		env.Cfg.KafkaBrokers,

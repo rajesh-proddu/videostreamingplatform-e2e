@@ -16,6 +16,7 @@ type Env struct {
 	Cfg       *config.Config
 	Metadata  *client.MetadataClient
 	Data      *client.DataClient
+	User      *client.UserClient
 	ES        *client.ESClient
 	Recommend *client.RecommendClient
 	CDN       *client.CDNClient
@@ -28,10 +29,29 @@ func NewEnv(t *testing.T) *Env {
 		Cfg:       cfg,
 		Metadata:  client.NewMetadataClient(cfg.MetadataServiceURL, cfg.HTTPTimeout),
 		Data:      client.NewDataClient(cfg.DataServiceURL, cfg.UploadTimeout),
+		User:      client.NewUserClient(cfg.UserServiceURL, cfg.HTTPTimeout),
 		ES:        client.NewESClient(cfg.ElasticsearchURL, cfg.ESVideoIndex, cfg.HTTPTimeout),
 		Recommend: client.NewRecommendClient(cfg.RecommendationServiceURL, cfg.HTTPTimeout),
 		CDN:       client.NewCDNClient(cfg.CDNProxyURL, cfg.HTTPTimeout),
 	}
+}
+
+// EnsureEntitled acquires an entitled access token and sets it on the data client
+// so gated download calls succeed. Best-effort: if the user service is
+// unreachable, the download paywall is presumably disabled, so it no-ops and the
+// download proceeds unauthenticated.
+func (e *Env) EnsureEntitled(t *testing.T) {
+	t.Helper()
+	if _, err := e.User.Health(); err != nil {
+		t.Logf("user service unreachable (%v) — proceeding without auth (paywall assumed off)", err)
+		return
+	}
+	token, err := e.User.AcquireEntitledToken()
+	if err != nil {
+		t.Fatalf("acquire entitled token: %v", err)
+	}
+	e.Data.Token = token
+	t.Log("acquired entitled token")
 }
 
 func (e *Env) CreateTestVideo(t *testing.T, title string, sizeBytes int64) *client.Video {

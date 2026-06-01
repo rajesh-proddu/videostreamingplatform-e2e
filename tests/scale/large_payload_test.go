@@ -12,6 +12,7 @@ import (
 
 func TestLargeFileUpload_1MB(t *testing.T) {
 	env := testutil.NewEnv(t)
+	env.EnsureEntitled(t)
 	const fileSize = 1 * 1024 * 1024 // 1 MB
 
 	video := env.CreateTestVideo(t, testutil.UniqueTitle("large-1mb"), fileSize)

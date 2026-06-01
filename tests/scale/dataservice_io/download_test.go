@@ -56,7 +56,7 @@ func TestDownload_Single_VariedSize(t *testing.T) {
 
 	hc := &http.Client{Timeout: 20 * time.Minute}
 	for i, cv := range corpus {
-		res := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "dl-user", "", hc)
+		res := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "dl-user", "", env.Data.Token, hc)
 		if res.Err != nil {
 			t.Errorf("download %d MiB: %v", sizes[i], res.Err)
 			continue
@@ -96,7 +96,7 @@ func TestDownload_Concurrent_16x10MB(t *testing.T) {
 
 	start := time.Now()
 	runConcurrent(workers, func(idx int) {
-		dr := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, fmt.Sprintf("dl-user-%d", idx), "", hc)
+		dr := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, fmt.Sprintf("dl-user-%d", idx), "", env.Data.Token, hc)
 		results[idx] = r{bytes: dr.Bytes, status: dr.Status, err: dr.Err, dt: dr.Elapsed}
 	})
 	elapsed := time.Since(start)
@@ -156,7 +156,7 @@ func TestDownload_RangeRequests(t *testing.T) {
 
 	for i, r := range ranges {
 		hdr := fmt.Sprintf("bytes=%d-%d", r.start, r.end)
-		res := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "rng-user", hdr, hc)
+		res := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "rng-user", hdr, env.Data.Token, hc)
 		if res.Err != nil {
 			t.Errorf("range %d (%s): %v", i, hdr, res.Err)
 			continue
@@ -202,7 +202,7 @@ func TestDownload_CDNProxy_vs_Direct(t *testing.T) {
 	}
 
 	// Full GET timings.
-	directFull := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "cdn-cmp", "", hc)
+	directFull := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "cdn-cmp", "", env.Data.Token, hc)
 	cdnFull := streamDownloadCDN(env.Cfg.CDNProxyURL, cv.VideoID, "", hc)
 	if directFull.Err != nil || cdnFull.Err != nil {
 		t.Fatalf("full GET: direct=%v cdn=%v", directFull.Err, cdnFull.Err)
@@ -217,7 +217,7 @@ func TestDownload_CDNProxy_vs_Direct(t *testing.T) {
 	// Range request, ensure CDN doesn't break it.
 	rangeHdr := "bytes=1048576-2097151" // 1 MiB chunk in the middle
 	cdnRange := streamDownloadCDN(env.Cfg.CDNProxyURL, cv.VideoID, rangeHdr, hc)
-	directRange := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "cdn-cmp", rangeHdr, hc)
+	directRange := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, "cdn-cmp", rangeHdr, env.Data.Token, hc)
 	if directRange.Status != http.StatusPartialContent {
 		t.Errorf("direct range status=%d", directRange.Status)
 	}
@@ -246,7 +246,7 @@ func TestDownload_Sanity_Parallel(t *testing.T) {
 	var mu sync.Mutex
 	var lats []time.Duration
 	runConcurrent(workers, func(idx int) {
-		r := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, fmt.Sprintf("u-%d", idx), "", hc)
+		r := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, fmt.Sprintf("u-%d", idx), "", env.Data.Token, hc)
 		if r.Err == nil && r.Status == http.StatusOK && r.Bytes == cv.Size {
 			atomic.AddInt64(&ok, 1)
 			mu.Lock()

@@ -10,6 +10,7 @@ import (
 type Config struct {
 	MetadataServiceURL string
 	DataServiceURL     string
+	UserServiceURL     string
 	DataServiceGRPC    string
 	KafkaBrokers       string
 	RedisAddr          string
@@ -51,6 +52,7 @@ func Load() *Config {
 	return &Config{
 		MetadataServiceURL: envOr("METADATA_SERVICE_URL", "http://127.0.0.1:8080"),
 		DataServiceURL:     envOr("DATA_SERVICE_URL", "http://127.0.0.1:8081"),
+		UserServiceURL:     envOr("USER_SERVICE_URL", "http://127.0.0.1:8082"),
 		DataServiceGRPC:    envOr("DATA_SERVICE_GRPC", "127.0.0.1:50051"),
 		KafkaBrokers:       envOr("KAFKA_BROKERS", "127.0.0.1:9092"),
 		RedisAddr:          envOr("REDIS_ADDR", "127.0.0.1:6379"),

@@ -73,7 +73,7 @@ func TestMixed_UploadDownload_4x16(t *testing.T) {
 			}
 			cv := corpus[i%len(corpus)]
 			i++
-			r := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, fmt.Sprintf("dl-%d", workerID), "", hc)
+			r := streamDownload(env.Cfg.DataServiceURL, cv.VideoID, fmt.Sprintf("dl-%d", workerID), "", env.Data.Token, hc)
 			if r.Err != nil || r.Status != http.StatusOK {
 				atomic.AddInt64(&dlErr, 1)
 				continue

@@ -36,6 +36,7 @@ func produceWatchEvent(t *testing.T, brokers, topic string, evt rawWatchEvent) {
 
 func uploadAndDownload(t *testing.T, env *testutil.Env, sizeKB int) string {
 	t.Helper()
+	env.EnsureEntitled(t)
 	v := env.CreateTestVideo(t, testutil.UniqueTitle("ice"), int64(sizeKB*1024))
 
 	init, _, err := env.Data.InitiateUpload(&client.UploadInitiateRequest{

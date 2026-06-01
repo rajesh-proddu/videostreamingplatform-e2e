@@ -11,6 +11,7 @@ import (
 
 func TestDownload_IntegrityCheck(t *testing.T) {
 	env := testutil.NewEnv(t)
+	env.EnsureEntitled(t)
 	video := env.CreateTestVideo(t, testutil.UniqueTitle("download"), 8*1024)
 
 	// Upload a known payload
@@ -60,6 +61,7 @@ func TestDownload_IntegrityCheck(t *testing.T) {
 
 func TestDownload_NonExistentVideo_Returns404(t *testing.T) {
 	env := testutil.NewEnv(t)
+	env.EnsureEntitled(t)
 
 	_, resp, err := env.Data.DownloadVideo("nonexistent-video-id", "e2e-user")
 	if err == nil && resp != nil && resp.StatusCode != http.StatusNotFound {

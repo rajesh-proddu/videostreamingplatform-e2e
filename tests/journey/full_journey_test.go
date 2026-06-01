@@ -24,6 +24,7 @@ import (
 // document landed in the videos index. Otherwise that step is skipped.
 func TestSingleUserFullJourney(t *testing.T) {
 	env := testutil.NewEnv(t)
+	env.EnsureEntitled(t)
 
 	const (
 		sizeBytes = 8 * 1024

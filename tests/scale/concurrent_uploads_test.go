@@ -85,6 +85,7 @@ func TestConcurrentUploads(t *testing.T) {
 
 func TestConcurrentDownloads(t *testing.T) {
 	env := testutil.NewEnv(t)
+	env.EnsureEntitled(t)
 
 	// Create and upload one video
 	video := env.CreateTestVideo(t, testutil.UniqueTitle("conc-dl"), 4*1024)

@@ -187,7 +187,7 @@ type downloadResult struct {
 
 // streamDownload issues a GET (with optional Range header) and discards bytes,
 // counting them. Returns elapsed/total bytes/status.
-func streamDownload(baseURL, videoID, userID, rangeHeader string, hc *http.Client) downloadResult {
+func streamDownload(baseURL, videoID, userID, rangeHeader, token string, hc *http.Client) downloadResult {
 	url := fmt.Sprintf("%s/videos/%s/download", baseURL, videoID)
 	if userID != "" {
 		url += "?user_id=" + userID
@@ -198,6 +198,9 @@ func streamDownload(baseURL, videoID, userID, rangeHeader string, hc *http.Clien
 	}
 	if rangeHeader != "" {
 		req.Header.Set("Range", rangeHeader)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	start := time.Now()
 	resp, err := hc.Do(req)
@@ -264,6 +267,10 @@ func streamDownloadCDN(cdnURL, videoID, rangeHeader string, hc *http.Client) dow
 // still unreachable.
 func requireDataServiceUp(t *testing.T, env *testutil.Env) {
 	t.Helper()
+	// Acquire an entitled token so gated download calls succeed (no-op if the
+	// user service is unreachable / paywall is off). Sets env.Data.Token, which
+	// streamDownload forwards as a bearer token.
+	env.EnsureEntitled(t)
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		code, err := env.Data.Health()

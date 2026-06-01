@@ -49,6 +49,9 @@ type CompleteUploadResponse struct {
 type DataClient struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	// Token, when set, is sent as a bearer token on gated calls (download).
+	// Populated by testutil.Env.EnsureEntitled.
+	Token string
 }
 
 func NewDataClient(baseURL string, timeout time.Duration) *DataClient {
@@ -128,7 +131,14 @@ func (c *DataClient) DownloadVideo(videoID, userID string) ([]byte, *http.Respon
 	if userID != "" {
 		url += "?user_id=" + userID
 	}
-	resp, err := c.HTTPClient.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}
