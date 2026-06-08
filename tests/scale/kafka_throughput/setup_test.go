@@ -251,6 +251,7 @@ func TestMain(m *testing.M) {
 	}{
 		{TopicLow, 3},
 		{TopicHigh, 12},
+		{TopicSustained, intEnv("SCALE_KAFKA_PARTITIONS", 12)},
 	} {
 		if err := ensureTopic(cfg.Brokers, t.name, t.partitions); err != nil {
 			fmt.Fprintf(os.Stderr, "setup: ensureTopic %s: %v\n", t.name, err)
