@@ -121,6 +121,14 @@ func (e *Env) IcebergS3(t *testing.T) *client.IcebergS3Client {
 	return c
 }
 
+func (e *Env) RequireUser(t *testing.T) {
+	t.Helper()
+	code, err := e.User.Health()
+	if err != nil || code >= 500 {
+		t.Skipf("User service unreachable at %s: code=%d err=%v", e.Cfg.UserServiceURL, code, err)
+	}
+}
+
 func (e *Env) RequireES(t *testing.T) {
 	t.Helper()
 	code, err := e.ES.Health()
