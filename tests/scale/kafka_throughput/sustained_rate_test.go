@@ -101,6 +101,24 @@ func TestSustained_TargetRPS_ProduceConsume(t *testing.T) {
 	t.Logf("target=%d msgs/s  floor(SCALE_KAFKA_MIN_RPS)=%d (%s)",
 		target, minRPS, floorMode(minRPS))
 
+	// Precondition: the topic must actually have the partitions we asked for. A topic
+	// silently stuck at 1 partition (broker auto-create default) caps all the parallelism
+	// and makes the keep-up assertion meaningless — fail loudly instead.
+	if got := topicPartitionCount(cfg.Brokers, TopicSustained); got != partitions {
+		t.Fatalf("precondition failed: topic %s has %d partitions, want %d (topic setup is broken)",
+			TopicSustained, got, partitions)
+	}
+
+	// Total volume is bounded to target×duration so the test runtime and the producer's
+	// in-flight backlog stay bounded. Producers push this volume as fast as they can; the
+	// achieved rate = delivered / wall-time then tells us whether the cluster sustained the
+	// target (volume drains in ≤ duration ⇒ rate ≥ target).
+	totalVolume := int64(target) * int64(duration/time.Second)
+	if totalVolume <= 0 {
+		totalVolume = int64(target)
+	}
+	t.Logf("volume=%d msgs (target × duration)", totalVolume)
+
 	// ---- consumer group: start first so the bootstrap window doesn't eat the produce window ----
 	var consumed int64
 	groupID := uniqueGroupID("scale-sustained")
@@ -133,8 +151,8 @@ func TestSustained_TargetRPS_ProduceConsume(t *testing.T) {
 			}
 		}(i)
 	}
-	// Bootstrap tax for a fresh consumer group is ~3-7s; let members join + get assignments.
-	consumeStart := time.Now()
+	// Bootstrap tax for a fresh consumer group is ~3-7s; let members join + get assignments
+	// before we start the clock, so the idle join window doesn't dilute the consume rate.
 	time.Sleep(7 * time.Second)
 
 	// ---- producers: async, batched, push max-rate for the duration ----
@@ -149,6 +167,7 @@ func TestSustained_TargetRPS_ProduceConsume(t *testing.T) {
 	body := payload(size)
 	const batchPerCall = 500
 
+	var enqueued int64 // shared budget cursor across producers
 	var prodWG sync.WaitGroup
 	startBarrier := make(chan struct{})
 	produceStart := time.Now()
@@ -158,23 +177,34 @@ func TestSustained_TargetRPS_ProduceConsume(t *testing.T) {
 			defer prodWG.Done()
 			w := newAsyncWriter(cfg, TopicSustained, onComplete)
 			defer w.Close() // Close flushes pending batches and waits for their Completion
-			ctx, cancel := context.WithTimeout(context.Background(), duration+5*time.Minute)
+			// Safety ceiling: even a badly degraded cluster can't run forever.
+			ctx, cancel := context.WithTimeout(context.Background(), 10*duration+5*time.Minute)
 			defer cancel()
 			<-startBarrier
-			deadline := time.Now().Add(duration)
 			batch := make([]kafkago.Message, 0, batchPerCall)
-			for time.Now().Before(deadline) {
+			for {
+				// Claim the next slice of the shared volume budget.
+				end := atomic.AddInt64(&enqueued, batchPerCall)
+				start := end - batchPerCall
+				if start >= totalVolume {
+					return
+				}
+				n := batchPerCall
+				if end > totalVolume {
+					n = int(totalVolume - start)
+				}
 				batch = batch[:0]
-				for k := 0; k < batchPerCall; k++ {
+				for k := 0; k < n; k++ {
 					batch = append(batch, kafkago.Message{Value: body})
 				}
-				// Async writer: this enqueues and returns; results land on onComplete.
+				// Async writer: WriteMessages enqueues and returns (blocking only when the
+				// internal queue is full — that's the backpressure that bounds memory);
+				// delivery results land on onComplete.
 				if err := w.WriteMessages(ctx, batch...); err != nil {
 					if ctx.Err() != nil {
 						return
 					}
-					// transient enqueue error; brief backoff and retry the window
-					time.Sleep(5 * time.Millisecond)
+					time.Sleep(5 * time.Millisecond) // transient enqueue error; brief backoff
 				}
 			}
 		}()
@@ -200,7 +230,10 @@ func TestSustained_TargetRPS_ProduceConsume(t *testing.T) {
 	for atomic.LoadInt64(&consumed) < produced && time.Now().Before(drainDeadline) {
 		time.Sleep(250 * time.Millisecond)
 	}
-	consumeElapsed := time.Since(consumeStart)
+	// Measure consume throughput over the concurrent produce→drain window (consumers were
+	// already joined and warm before produceStart), so it reflects steady-state keep-up
+	// rate rather than being diluted by the join/bootstrap idle period.
+	consumeElapsed := time.Since(produceStart)
 	got := atomic.LoadInt64(&consumed)
 	stopConsumers()
 	consWG.Wait()
@@ -224,13 +257,24 @@ func TestSustained_TargetRPS_ProduceConsume(t *testing.T) {
 	} else {
 		t.Logf("%-18s | %14s", "end lag", "n/a (CLI unavailable)")
 	}
+	activeMembers := 0
 	for i, v := range perMember {
 		t.Logf("  member[%d] consumed=%d", i, v)
+		if v > 0 {
+			activeMembers++
+		}
 	}
 
 	// ---- assertions ----
 	if produced == 0 {
 		t.Fatalf("producers made no progress; delivered=0 (is Kafka reachable at %s?)", cfg.BrokersCSV)
+	}
+	// Parallelism actually happened: with >1 partition and >1 consumer, work must spread
+	// across members. (A single member draining everything is the single-partition-topic
+	// symptom that previously hid behind a passing keep-up check.)
+	if partitions > 1 && consumers > 1 && activeMembers < 2 {
+		t.Fatalf("no consumer parallelism: only %d of %d members consumed (partitions=%d) — "+
+			"messages likely landed on one partition", activeMembers, consumers, partitions)
 	}
 	// Correctness regardless of environment: the consumer must drain everything it was sent.
 	// Allow tiny slack for at-least-once tail timing.
@@ -265,4 +309,22 @@ func max64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// topicPartitionCount returns the current partition count for a topic, or -1 if it
+// can't be read. The topic must already exist (this reads it by name).
+func topicPartitionCount(brokers []string, topic string) int {
+	if len(brokers) == 0 {
+		return -1
+	}
+	conn, err := kafkago.Dial("tcp", brokers[0])
+	if err != nil {
+		return -1
+	}
+	defer conn.Close()
+	parts, err := conn.ReadPartitions(topic)
+	if err != nil {
+		return -1
+	}
+	return len(parts)
 }

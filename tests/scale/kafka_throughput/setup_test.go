@@ -126,12 +126,32 @@ func (c scaleConfig) dialer() *kafkago.Dialer {
 	}
 }
 
-// ensureTopic creates a topic with the given partition count if it doesn't exist.
-// Treats TopicAlreadyExistsError as success (idempotent).
+// ensureTopic creates a topic with the given partition count if it doesn't exist,
+// and — critically — makes the partition count authoritative when it already does.
+// The broker has auto.create.topics.enable=true / num.partitions=1, so a topic can
+// pre-exist with 1 partition (auto-created, or left over from a prior run). Silently
+// accepting that is what previously neutered the partition-parallelism tests, so on
+// AlreadyExists we verify the shape and repair it rather than returning success blindly.
 func ensureTopic(brokers []string, topic string, partitions int) error {
 	if len(brokers) == 0 {
 		return fmt.Errorf("no brokers configured")
 	}
+	err := createTopicRaw(brokers, topic, partitions)
+	if err == nil {
+		// Wait for metadata to propagate before returning: on a multi-broker
+		// cluster a produce immediately after create can otherwise hit
+		// UNKNOWN_TOPIC_OR_PARTITION until all partition leaders are elected.
+		return waitTopicReady(brokers, topic, partitions, 20*time.Second)
+	}
+	if isAlreadyExists(err) {
+		return ensureExactPartitions(brokers, topic, partitions)
+	}
+	return fmt.Errorf("create topic %s: %w", topic, err)
+}
+
+// createTopicRaw issues a single CreateTopics for the given partition count and
+// returns the raw error (including TopicAlreadyExists) for the caller to interpret.
+func createTopicRaw(brokers []string, topic string, partitions int) error {
 	conn, err := kafkago.Dial("tcp", brokers[0])
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", brokers[0], err)
@@ -153,28 +173,42 @@ func ensureTopic(brokers []string, topic string, partitions int) error {
 		}
 	}
 	defer cConn.Close()
-
-	err = cConn.CreateTopics(kafkago.TopicConfig{
+	return cConn.CreateTopics(kafkago.TopicConfig{
 		Topic:             topic,
 		NumPartitions:     partitions,
 		ReplicationFactor: 1,
 	})
-	if err == nil {
-		// Wait for metadata to propagate before returning: on a multi-broker
-		// cluster a produce immediately after create can otherwise hit
-		// UNKNOWN_TOPIC_OR_PARTITION until all partition leaders are elected.
-		return waitTopicReady(brokers, topic, partitions, 20*time.Second)
-	}
-	// kafka-go returns this as an Error value with code 36 (TopicAlreadyExists)
+}
+
+// isAlreadyExists normalizes the various ways kafka-go surfaces TopicAlreadyExists.
+func isAlreadyExists(err error) bool {
 	var kerr kafkago.Error
 	if errors.As(err, &kerr) && kerr == kafkago.TopicAlreadyExists {
+		return true
+	}
+	return strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "ALREADY_EXISTS")
+}
+
+// ensureExactPartitions verifies an existing topic has exactly `partitions`
+// partitions and recreates it from scratch if not. Partitions can be grown on a
+// live topic but not shrunk, and for an ephemeral scale-test topic a clean
+// recreate is the simplest way to guarantee the requested shape.
+func ensureExactPartitions(brokers []string, topic string, partitions int) error {
+	conn, err := kafkago.Dial("tcp", brokers[0])
+	if err != nil {
+		return fmt.Errorf("dial: %w", err)
+	}
+	parts, perr := conn.ReadPartitions(topic) // topic exists here, so this won't auto-create
+	conn.Close()
+	if perr == nil && len(parts) == partitions {
 		return nil
 	}
-	// Some kafka-go versions wrap differently; fall back to string match.
-	if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "ALREADY_EXISTS") {
-		return nil
+	deleteTopic(brokers, topic)
+	waitTopicGone(brokers, topic, 8*time.Second)
+	if err := createTopicRaw(brokers, topic, partitions); err != nil {
+		return fmt.Errorf("recreate topic %s: %w", topic, err)
 	}
-	return fmt.Errorf("create topic %s: %w", topic, err)
+	return waitTopicReady(brokers, topic, partitions, 20*time.Second)
 }
 
 // deleteTopic is best-effort; we leave topics in place so the run is repeatable
@@ -186,6 +220,39 @@ func deleteTopic(brokers []string, topic string) {
 	}
 	defer conn.Close()
 	_ = conn.DeleteTopics(topic)
+}
+
+// waitTopicGone blocks until `topic` is absent from cluster metadata (deletion is
+// async) or the timeout elapses. It lists ALL topics rather than reading the topic
+// by name — a name-scoped metadata request would auto-create the topic with the
+// broker default num.partitions=1, which is the exact bug that previously left
+// reset topics single-partitioned.
+func waitTopicGone(brokers []string, topic string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := kafkago.Dial("tcp", brokers[0])
+		if err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		parts, perr := conn.ReadPartitions() // no topic arg → does not auto-create
+		conn.Close()
+		if perr != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		present := false
+		for _, p := range parts {
+			if p.Topic == topic {
+				present = true
+				break
+			}
+		}
+		if !present {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // waitTopicReady blocks until the topic's metadata has propagated — all
@@ -219,27 +286,22 @@ func waitTopicReady(brokers []string, topic string, partitions int, timeout time
 	return nil // best effort — let the test surface a real failure if still not ready
 }
 
-// resetTopic deletes (best effort) and recreates a topic. Useful when we want a
-// clean slate for end-to-end latency / drain measurements.
+// resetTopic deletes and recreates a topic with the requested partition count, for a
+// clean slate before drain/throughput measurements. It waits for the deletion to
+// settle via waitTopicGone (which does NOT auto-create the topic) and then creates it
+// fresh, so the partition count is always exactly `partitions`.
 func resetTopic(brokers []string, topic string, partitions int) error {
 	deleteTopic(brokers, topic)
-	// Topic deletion is async; poll up to a few seconds for it to disappear,
-	// otherwise CreateTopics will report AlreadyExists and we'll keep the old data.
-	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) {
-		conn, err := kafkago.Dial("tcp", brokers[0])
-		if err != nil {
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-		parts, perr := conn.ReadPartitions(topic)
-		conn.Close()
-		if perr != nil || len(parts) == 0 {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
+	waitTopicGone(brokers, topic, 8*time.Second)
+	err := createTopicRaw(brokers, topic, partitions)
+	if err == nil {
+		return waitTopicReady(brokers, topic, partitions, 20*time.Second)
 	}
-	return ensureTopic(brokers, topic, partitions)
+	if isAlreadyExists(err) {
+		// Deletion hadn't fully settled; make the shape authoritative.
+		return ensureExactPartitions(brokers, topic, partitions)
+	}
+	return fmt.Errorf("recreate topic %s: %w", topic, err)
 }
 
 // TestMain creates the load-test topics once for the package.
