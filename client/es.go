@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -99,6 +100,44 @@ func (c *ESClient) SearchTitle(q string) (int, error) {
 		return 0, err
 	}
 	return r.Hits.Total.Value, nil
+}
+
+// CountByIDs returns how many of the given document IDs currently exist in the
+// index, using the _count API with an ids query. IDs are queried in chunks so a
+// large batch doesn't blow the request body. Unlike SearchTitle this is exact
+// and analyzer-independent — which is what a no-loss scale assertion needs.
+func (c *ESClient) CountByIDs(ids []string) (int, error) {
+	const chunk = 1024
+	total := 0
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		body, _ := json.Marshal(map[string]any{
+			"query": map[string]any{"ids": map[string]any{"values": ids[start:end]}},
+		})
+		url := fmt.Sprintf("%s/%s/_count", c.BaseURL, c.Index)
+		resp, err := c.HTTPClient.Post(url, "application/json", bytes.NewReader(body))
+		if err != nil {
+			return 0, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return 0, fmt.Errorf("count: status %d, body: %s", resp.StatusCode, b)
+		}
+		var r struct {
+			Count int `json:"count"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+			resp.Body.Close()
+			return 0, err
+		}
+		resp.Body.Close()
+		total += r.Count
+	}
+	return total, nil
 }
 
 func (c *ESClient) RefreshIndex() error {
