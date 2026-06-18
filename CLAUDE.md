@@ -18,6 +18,7 @@ go test ./tests/resiliency/... -v
 go test ./tests/scale/... -v
 go test ./tests/analytics/... -v          # ES + Iceberg consumers
 go test ./tests/recommendations/... -v    # FastAPI + LangGraph agent
+go test ./tests/notifications/... -v      # subscribe/video -> Kafka -> notifications -> WebSocket
 
 # Run a single test
 go test ./tests/happypath/... -v -run TestVideoCRUDLifecycle
@@ -52,6 +53,8 @@ All config is via environment variables with sensible defaults for local Kind cl
 | `ICEBERG_WAREHOUSE_BUCKET` | `iceberg-warehouse` | S3 bucket holding Iceberg data files |
 | `ICEBERG_TABLE_PREFIX` | `analytics.db/watch_history/data` | Object key prefix for parquet data files |
 | `ANALYTICS_WAIT_TIME` | `30s` | Polling timeout for ES indexing + Iceberg flushes |
+| `NOTIFICATION_SERVICE_URL` | `http://localhost:8083` | Notifications service base URL (WS + REST) |
+| `NOTIFICATION_WAIT_TIME` | `30s` | Wait for a notification to traverse Kafka→rules→ch-web→Redis→WS |
 
 ## Architecture
 
@@ -63,6 +66,7 @@ All config is via environment variables with sensible defaults for local Kind cl
 - `tests/scale/` — load: bulk create/delete, concurrent uploads/downloads, large file integrity, pagination under load
 - `tests/analytics/` — `kafka-es-consumer` + `watch-history-consumer` end-to-end: video CRUD → ES doc presence; raw Kafka watch event → Iceberg parquet append; version/ID drop rules; idle-flush; envelope shape
 - `tests/recommendations/` — FastAPI contract (limit bounds, missing user_id), proxy-via-metadataservice (400 on missing user, current `limit` hardcoding), agent behaviour (watch filter on/off based on `query`, trending surfacing, search hit, score threshold), latency budget, and a cross-pipeline test that requires the full `metadataservice → Kafka → ES → recs.retrieve` chain
+- `tests/notifications/` — realtime notifications platform end-to-end: drives original endpoints (userservice subscribe→checkout, metadataservice create-video), then asserts the domain event traverses Kafka → notif-rules → notification-events → ch-web (MySQL inbox + Redis) → WebSocket. Covers per-user delivery (`SUBSCRIPTION_ACTIVATED`), broadcast (`VIDEO_PUBLISHED`), reconnect backlog replay + REST mark-read, and JWT gating of the WS/REST surface. `NotificationClient` opens the `GET /ws?token=` stream (gorilla/websocket) and the REST center. Skips when the notifications/user service is unreachable; assumes `PAYMENT_PROVIDER=mock`
 
 ## Key patterns
 

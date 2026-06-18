@@ -8,12 +8,13 @@ import (
 )
 
 type Config struct {
-	MetadataServiceURL string
-	DataServiceURL     string
-	UserServiceURL     string
-	DataServiceGRPC    string
-	KafkaBrokers       string
-	RedisAddr          string
+	MetadataServiceURL     string
+	DataServiceURL         string
+	UserServiceURL         string
+	NotificationServiceURL string
+	DataServiceGRPC        string
+	KafkaBrokers           string
+	RedisAddr              string
 
 	ElasticsearchURL         string
 	ESVideoIndex             string
@@ -31,10 +32,11 @@ type Config struct {
 	CDNProxyURL              string
 	CloudFrontDistributionID string
 
-	HTTPTimeout       time.Duration
-	UploadTimeout     time.Duration
-	EventWaitTime     time.Duration
-	AnalyticsWaitTime time.Duration
+	HTTPTimeout          time.Duration
+	UploadTimeout        time.Duration
+	EventWaitTime        time.Duration
+	AnalyticsWaitTime    time.Duration
+	NotificationWaitTime time.Duration
 
 	BulkCount       int
 	ConcurrentUsers int
@@ -50,12 +52,13 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		MetadataServiceURL: envOr("METADATA_SERVICE_URL", "http://127.0.0.1:8080"),
-		DataServiceURL:     envOr("DATA_SERVICE_URL", "http://127.0.0.1:8081"),
-		UserServiceURL:     envOr("USER_SERVICE_URL", "http://127.0.0.1:8082"),
-		DataServiceGRPC:    envOr("DATA_SERVICE_GRPC", "127.0.0.1:50051"),
-		KafkaBrokers:       envOr("KAFKA_BROKERS", "127.0.0.1:9092"),
-		RedisAddr:          envOr("REDIS_ADDR", "127.0.0.1:6379"),
+		MetadataServiceURL:     envOr("METADATA_SERVICE_URL", "http://127.0.0.1:8080"),
+		DataServiceURL:         envOr("DATA_SERVICE_URL", "http://127.0.0.1:8081"),
+		UserServiceURL:         envOr("USER_SERVICE_URL", "http://127.0.0.1:8082"),
+		NotificationServiceURL: envOr("NOTIFICATION_SERVICE_URL", "http://127.0.0.1:8083"),
+		DataServiceGRPC:        envOr("DATA_SERVICE_GRPC", "127.0.0.1:50051"),
+		KafkaBrokers:           envOr("KAFKA_BROKERS", "127.0.0.1:9092"),
+		RedisAddr:              envOr("REDIS_ADDR", "127.0.0.1:6379"),
 
 		ElasticsearchURL:         envOr("ELASTICSEARCH_URL", "http://127.0.0.1:9200"),
 		ESVideoIndex:             envOr("ES_VIDEO_INDEX", "videos"),
@@ -73,10 +76,11 @@ func Load() *Config {
 		CDNProxyURL:              envOr("CDN_PROXY_URL", "http://127.0.0.1:8090"),
 		CloudFrontDistributionID: envOr("CLOUDFRONT_DISTRIBUTION_ID", ""),
 
-		HTTPTimeout:       durationOr("HTTP_TIMEOUT", 30*time.Second),
-		UploadTimeout:     durationOr("UPLOAD_TIMEOUT", 120*time.Second),
-		EventWaitTime:     durationOr("EVENT_WAIT_TIME", 5*time.Second),
-		AnalyticsWaitTime: durationOr("ANALYTICS_WAIT_TIME", 30*time.Second),
+		HTTPTimeout:          durationOr("HTTP_TIMEOUT", 30*time.Second),
+		UploadTimeout:        durationOr("UPLOAD_TIMEOUT", 120*time.Second),
+		EventWaitTime:        durationOr("EVENT_WAIT_TIME", 5*time.Second),
+		AnalyticsWaitTime:    durationOr("ANALYTICS_WAIT_TIME", 30*time.Second),
+		NotificationWaitTime: durationOr("NOTIFICATION_WAIT_TIME", 30*time.Second),
 
 		BulkCount:       intOr("BULK_COUNT", 50),
 		ConcurrentUsers: intOr("CONCURRENT_USERS", 10),

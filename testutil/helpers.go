@@ -17,6 +17,7 @@ type Env struct {
 	Metadata  *client.MetadataClient
 	Data      *client.DataClient
 	User      *client.UserClient
+	Notify    *client.NotificationClient
 	ES        *client.ESClient
 	Recommend *client.RecommendClient
 	CDN       *client.CDNClient
@@ -30,6 +31,7 @@ func NewEnv(t *testing.T) *Env {
 		Metadata:  client.NewMetadataClient(cfg.MetadataServiceURL, cfg.HTTPTimeout),
 		Data:      client.NewDataClient(cfg.DataServiceURL, cfg.UploadTimeout),
 		User:      client.NewUserClient(cfg.UserServiceURL, cfg.HTTPTimeout),
+		Notify:    client.NewNotificationClient(cfg.NotificationServiceURL, cfg.HTTPTimeout),
 		ES:        client.NewESClient(cfg.ElasticsearchURL, cfg.ESVideoIndex, cfg.HTTPTimeout),
 		Recommend: client.NewRecommendClient(cfg.RecommendationServiceURL, cfg.HTTPTimeout),
 		CDN:       client.NewCDNClient(cfg.CDNProxyURL, cfg.HTTPTimeout),
@@ -126,6 +128,14 @@ func (e *Env) RequireUser(t *testing.T) {
 	code, err := e.User.Health()
 	if err != nil || code >= 500 {
 		t.Skipf("User service unreachable at %s: code=%d err=%v", e.Cfg.UserServiceURL, code, err)
+	}
+}
+
+func (e *Env) RequireNotifications(t *testing.T) {
+	t.Helper()
+	code, err := e.Notify.Health()
+	if err != nil || code >= 500 {
+		t.Skipf("Notification service unreachable at %s: code=%d err=%v", e.Cfg.NotificationServiceURL, code, err)
 	}
 }
 
