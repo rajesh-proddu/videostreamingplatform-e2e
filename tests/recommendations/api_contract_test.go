@@ -21,6 +21,9 @@ func TestReco_NativeAPI_EmptyState_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Recommend: %v", err)
 	}
+	if resp.RequestID == "" {
+		t.Errorf("request_id empty; every response must name the impression it logged")
+	}
 	if len(resp.Recommendations) > 10 {
 		t.Errorf("returned %d > limit=10 recommendations", len(resp.Recommendations))
 	}
@@ -119,6 +122,11 @@ func TestReco_Proxy_HappyPath_ReturnsResponse(t *testing.T) {
 	}
 	if r.UserID == "" {
 		t.Errorf("user_id empty in proxy response")
+	}
+	// The proxy decodes and re-encodes the body, so a field missing from its
+	// response struct is silently dropped here.
+	if r.RequestID == "" {
+		t.Errorf("request_id empty in proxy response")
 	}
 }
 

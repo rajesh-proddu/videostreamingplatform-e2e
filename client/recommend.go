@@ -19,6 +19,7 @@ type Recommendation struct {
 }
 
 type RecommendationResponse struct {
+	RequestID       string           `json:"request_id,omitempty"`
 	UserID          string           `json:"user_id"`
 	Recommendations []Recommendation `json:"recommendations"`
 	Query           string           `json:"query,omitempty"`
